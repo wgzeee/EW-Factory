@@ -3,6 +3,7 @@ import netCDF4 as nc
 import geopandas as gpd
 from shapely.geometry import Point, Polygon
 import matplotlib.path as mpath
+import matplotlib.pyplot as plt
 
 def extract_province_var(file_path, shapefile_path, province_name, var_name):
     """
@@ -24,7 +25,7 @@ def extract_province_var(file_path, shapefile_path, province_name, var_name):
     provinces = gpd.read_file(shapefile_path)
     
     # 查找目标省的边界数据
-    target_province = provinces[provinces['NAME'] == province_name]
+    target_province = provinces[provinces['pr_name'] == province_name]
     if target_province.empty:
         raise ValueError(f'未找到目标省的边界数据：{province_name}')
     
@@ -87,12 +88,11 @@ def extract_province_var(file_path, shapefile_path, province_name, var_name):
     return var_province, lon_grid, lat_grid
 
 if __name__ == "__main__":
-    file_path = "D:/ERA5/2022/ssr/ssr_2022.nc"
+    file_path = "E:\\data\\era5\\2024\\ssrd_2024.nc"
     shapefile_path = "E:\\电力气象\\地图\\ChinaAdminDivisonSHP-master\\2. Province\\province.shp"
     province_name = '山东省'
-    var_name = 'ssr'
+    var_name = 'ssrd'
     
-    provinces = gpd.read_file(shapefile_path)
-    print("数据类型:", type(provinces))
-    print("\n数据形状:", provinces.shape)
-    print("\n列名:", provinces.columns.tolist())
+    ssrd_province, lon_grid, lat_grid = extract_province_var(file_path, shapefile_path, province_name, var_name)  
+    contour = plt.contourf(lon_grid, lat_grid, ssrd_province[1], cmap='viridis')  # 使用 contourf 绘制等值图
+    plt.colorbar(contour)  # 添加颜色条  
