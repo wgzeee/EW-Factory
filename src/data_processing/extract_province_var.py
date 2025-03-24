@@ -96,3 +96,4 @@ if __name__ == "__main__":
     ssrd_province, lon_grid, lat_grid = extract_province_var(file_path, shapefile_path, province_name, var_name)  
     contour = plt.contourf(lon_grid, lat_grid, ssrd_province[1], cmap='viridis')  # 使用 contourf 绘制等值图
     plt.colorbar(contour)  # 添加颜色条  
+    plt.show()  # 添加这行来显示图形

@@ -1,10 +1,15 @@
 import sys
 
-# 将项目的src文件夹路径添加到sys.path中
-# 这样可以在当前脚本中直接导入src文件夹中的模块
-sys.path.append("../scr")
+# 添加项目根目录到系统路径
+ROOT_DIR = Path(__file__).resolve().parent
+sys.path.append(str(ROOT_DIR))
 
-import extract_province_var
+# 导入项目模块
+from src.data_processing import data_loader
+from src.models import wind_model, solar_model
+from src.analysis import statistics, aggregation
+from src.visualization import map_visualization, time_series_visualization
+from src.utils import config_utils
 
 if __name__ == "__main__":
     file_path = "E:\\电力气象\\era5\\2024\\ssrd\\ssrd_2024.nc"
