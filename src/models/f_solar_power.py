@@ -1,6 +1,6 @@
 import numpy as np
 
-def f_solar_power(G, A, eta, G_threshold=100):
+def f_solar_power(G, A=1, eta=0.2, G_threshold=100):
     """
     计算光伏发电功率
     

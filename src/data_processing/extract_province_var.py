@@ -3,7 +3,6 @@ import netCDF4 as nc
 import geopandas as gpd
 from shapely.geometry import Point, Polygon
 import matplotlib.path as mpath
-import matplotlib.pyplot as plt
 
 def extract_province_var(file_path, shapefile_path, province_name, var_name):
     """
@@ -88,6 +87,7 @@ def extract_province_var(file_path, shapefile_path, province_name, var_name):
     return var_province, lon_grid, lat_grid
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
     file_path = "E:\\data\\era5\\2024\\ssrd_2024.nc"
     shapefile_path = "E:\\电力气象\\地图\\ChinaAdminDivisonSHP-master\\2. Province\\province.shp"
     province_name = '山东省'
