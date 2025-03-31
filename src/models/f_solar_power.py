@@ -32,5 +32,6 @@ def f_solar_power(G, A=1, eta=0.2, G_threshold=100):
     # 计算光伏发电功率（仅当 G >= G_threshold 时）
     mask = G >= G_threshold
     power[mask] = G[mask] * A * eta
+    power[np.isnan(G)] = np.nan
     
     return power
