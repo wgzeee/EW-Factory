@@ -23,8 +23,8 @@ def f_solar_power(G, A=1, eta=0.2, G_threshold=100):
     if eta <= 0 or eta >= 1:
         raise ValueError('转换效率 eta 必须在 0 到 1 之间')
     
-    # 将输入转换为numpy数组以支持数组运算
-    G = np.array(G)
+    # 将光照强度从J/m-2转换为w/m-2，并转换为numpy数组以支持向量化运算
+    G = np.array(G / 3600)
     
     # 初始化功率输出为0
     power = np.zeros_like(G)
