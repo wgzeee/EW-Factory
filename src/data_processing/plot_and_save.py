@@ -51,14 +51,5 @@ def plot_and_save_solar_power(solar_power, lon_grid, lat_grid, output_dir="outpu
     print(f"已保存{len(image_files)}张图片到 {output_dir}")
     print(f"已生成动画文件: {gif_path}")
 
-if __name__ == "__main__":
-    # ... existing code ...
+# if __name__ == "__main__":
     
-    G = ssrd_province / 3600
-    solar_power = f_solar_power.f_solar_power(G)
-    
-    # 调用新函数替代原来的绘图代码
-    plot_and_save_solar_power(solar_power, lon_grid, lat_grid, 
-                             output_dir="d:\\wgzee\\Documents\\GitHub\\EW-Factory\\output")
-    
-    # ... rest of the code ...
