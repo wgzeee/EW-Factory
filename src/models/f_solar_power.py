@@ -35,3 +35,42 @@ def f_solar_power(G, A=1, eta=0.2, G_threshold=100):
     power[np.isnan(G)] = np.nan
     
     return power
+
+
+def f_solar_power_2(G, Pn=1, rn=1000):
+    """
+    根据分段函数计算光伏发电功率
+    
+    参数:
+        G (float or ndarray): 光照强度 (W/m²)，可以是标量、向量或矩阵
+        Pn (float): 额定功率 (W)，默认为1W（表示单位1）
+        rn (float): 额定辐照强度 (W/m²)，默认为1000W/m²
+        
+    返回:
+        ndarray: 光伏发电功率 (W)，与 G 的维度相同
+    
+    公式:
+        P_e = {
+            P_r * r/r_r, r ∈ [0, r_r)
+            P_r,       r ∈ [r_r, ∞)
+        }
+    """
+    # 将光照强度从J/m-2转换为w/m-2，并转换为numpy数组以支持向量化运算
+    G = np.array(G / 3600)
+    
+    # 初始化功率输出数组
+    power = np.zeros_like(G, dtype=float)
+    
+    # 处理NaN值
+    power[np.isnan(G)] = np.nan
+    
+    # 应用分段函数
+    # 第一段：0 <= G < r_r
+    mask_low = (G >= 0) & (G < rn)
+    power[mask_low] = Pn * (G[mask_low] / rn)
+    
+    # 第二段：G >= r_r
+    mask_high = G >= rn
+    power[mask_high] = Pn
+    
+    return power

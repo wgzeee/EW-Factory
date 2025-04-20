@@ -64,6 +64,7 @@ def calculate_energy_statistics(power_data, time_array, stat_type='all'):
     if stat_type in ['annual', 'all']:
         # 计算全年电量
         annual_energy = np.sum(power_data, axis=0)
+        annual_energy = annual_energy[np.newaxis, :, :]  # 添加一个新的维度以匹配其他统计结果的形状
     
     # 根据统计类型返回结果
     if stat_type == 'daily':
