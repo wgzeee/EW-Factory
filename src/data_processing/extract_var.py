@@ -157,6 +157,139 @@ def extract_area_var(file_path, lat_range, lon_range, var_name):
     
     return var_subset, lon_grid, lat_grid, time_array
 
+def extract_china_var(file_path, shapefile_path, var_name):
+    """
+    提取全国范围的变量数据
+    
+    参数:
+        file_path (str): ERA5 数据文件路径（NetCDF 格式）
+        shapefile_path (str): 国界 Shapefile 文件路径
+        var_name (str): 目标变量名称（如 'ssr'）
+        
+    返回:
+        tuple: (var_china, lon_grid, lat_grid, time_array)
+            - var_china (ndarray): 全国范围的变量数据（矩阵）
+            - lon_grid (ndarray): 经度网格
+            - lat_grid (ndarray): 纬度网格
+            - time_array (array): 标准时间数组
+    """
+    # 读取国界数据
+    countries = gpd.read_file(shapefile_path)
+    
+    # 查找中国的边界数据（假设国家名称字段为'country'或'name'）
+    # 根据实际shapefile文件的字段名进行调整
+    if 'country' in countries.columns:
+        target_country = countries[countries['country'] == '中国']
+    elif 'name' in countries.columns:
+        target_country = countries[countries['name'] == '中国']
+    else:
+        # 如果没有找到合适的字段，可以尝试使用第一个记录（假设只有中国的数据）
+        target_country = countries.iloc[[0]]
+    
+    if target_country.empty:
+        raise ValueError('未找到中国的边界数据')
+    
+    # 获取中国的边界坐标
+    country_boundary = target_country.geometry.iloc[0]
+    if country_boundary.geom_type == 'MultiPolygon':
+        # 对于多边形集合，我们需要处理所有部分（包括大陆和岛屿）
+        # 创建一个空的边界坐标列表
+        all_boundary_coords = []
+        
+        # 遍历所有多边形
+        for polygon in country_boundary.geoms:
+            # 提取当前多边形的边界坐标
+            boundary_coords = np.array(polygon.exterior.coords)
+            all_boundary_coords.append(boundary_coords)
+        
+        # 计算所有边界的经纬度范围
+        all_lons = np.concatenate([coords[:, 0] for coords in all_boundary_coords])
+        all_lats = np.concatenate([coords[:, 1] for coords in all_boundary_coords])
+        
+        # 确定整体的经纬度范围
+        lon_min, lon_max = np.min(all_lons), np.max(all_lons)
+        lat_min, lat_max = np.min(all_lats), np.max(all_lats)
+    else:
+        # 如果是单个多边形，直接提取边界坐标
+        boundary_coords = np.array(country_boundary.exterior.coords)
+        lon_min, lon_max = np.min(boundary_coords[:, 0]), np.max(boundary_coords[:, 0])
+        lat_min, lat_max = np.min(boundary_coords[:, 1]), np.max(boundary_coords[:, 1])
+    
+    # 读取 ERA5 数据
+    dataset = nc.Dataset(file_path)
+    lon = dataset.variables['longitude'][:]
+    lat = dataset.variables['latitude'][:]
+    
+    # 提取并转换时间信息
+    time_array = extract_time_array(dataset)
+    
+    # 定义目标经纬度范围（扩展 0.5 度以包含边界）
+    lat_range = [lat_min - 0.5, lat_max + 0.5]
+    lon_range = [lon_min - 0.5, lon_max + 0.5]
+    
+    # 找到目标经纬度范围的索引
+    lat_idx = np.where((lat >= lat_range[0]) & (lat <= lat_range[1]))[0]
+    lon_idx = np.where((lon >= lon_range[0]) & (lon <= lon_range[1]))[0]
+    
+    # 提取目标经纬度范围内的变量数据
+    var_subset = dataset.variables[var_name][
+        :,  # 时间维度（如果有）
+        lat_idx[0]:lat_idx[-1]+1,  # 纬度范围
+        lon_idx[0]:lon_idx[-1]+1   # 经度范围
+    ]
+    
+    # 创建经纬度网格
+    lon_grid, lat_grid = np.meshgrid(lon[lon_idx], lat[lat_idx])
+    
+    # 创建一个掩码数组，初始化为全False
+    in_country = np.zeros(lon_grid.shape, dtype=bool)
+    
+    # 对于每个多边形（如果是MultiPolygon）
+    if country_boundary.geom_type == 'MultiPolygon':
+        for polygon in country_boundary.geoms:
+            # 提取当前多边形的边界坐标
+            boundary_coords = np.array(polygon.exterior.coords)
+            boundary_lon = boundary_coords[:, 0]
+            boundary_lat = boundary_coords[:, 1]
+            
+            # 创建用于判断点是否在多边形内的路径
+            boundary_path = mpath.Path(np.column_stack([boundary_lon, boundary_lat]))
+            
+            # 判断每个网格点是否在当前多边形内
+            points = np.column_stack([lon_grid.flatten(), lat_grid.flatten()])
+            in_polygon = boundary_path.contains_points(points).reshape(lon_grid.shape)
+            
+            # 更新掩码，如果点在任何一个多边形内，则设为True
+            in_country = in_country | in_polygon
+    else:
+        # 如果是单个多边形
+        boundary_lon = boundary_coords[:, 0]
+        boundary_lat = boundary_coords[:, 1]
+        
+        # 创建用于判断点是否在多边形内的路径
+        boundary_path = mpath.Path(np.column_stack([boundary_lon, boundary_lat]))
+        
+        # 判断每个网格点是否在目标国家边界内
+        points = np.column_stack([lon_grid.flatten(), lat_grid.flatten()])
+        in_country = boundary_path.contains_points(points).reshape(lon_grid.shape)
+    
+    # 转换为浮点数并将边界外的点设置为 NaN
+    in_country = in_country.astype(float)
+    in_country[in_country == 0] = np.nan
+    
+    # 提取目标国家的变量数据
+    # 注意：根据var_subset的维度调整乘法操作
+    if var_subset.ndim == 2:  # 如果没有时间维度
+        var_china = var_subset * in_country
+    else:  # 如果有时间维度
+        # 广播乘法以适应时间维度
+        var_china = var_subset * in_country[np.newaxis, :, :]
+    
+    # 关闭数据集
+    dataset.close()
+    
+    return var_china, lon_grid, lat_grid, time_array
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     file_path = "E:\\data\\era5\\2024\\ssrd_2024.nc"
