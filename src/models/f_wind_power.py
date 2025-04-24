@@ -1,6 +1,6 @@
 import numpy as np
 
-def f_wind_power(v, rated_power=1000, cut_in=3.0, rated=12.0, cut_out=25.0, 
+def f_wind_power(v, rated_power=1, cut_in=3.0, rated=12.0, cut_out=25.0, 
                  height_correction=False, ref_height=10, hub_height=80, alpha=0.143):
     """
     计算风力发电功率

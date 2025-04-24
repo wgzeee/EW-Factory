@@ -290,14 +290,93 @@ def extract_china_var(file_path, shapefile_path, var_name):
     
     return var_china, lon_grid, lat_grid, time_array
 
-if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    file_path = "E:\\data\\era5\\2024\\ssrd_2024.nc"
-    shapefile_path = "E:\\电力气象\\地图\\ChinaAdminDivisonSHP-master\\2. Province\\province.shp"
-    province_name = '山东省'
-    var_name = 'ssrd'
+
+def extract_area_var_approximately(file_path, province_name, var_name):
+    """
+    提取目标省份经纬度上下界的变量数据
     
-    ssrd_province, lon_grid, lat_grid, time_array = extract_province_var(file_path, shapefile_path, province_name, var_name)  
-    contour = plt.contourf(lon_grid, lat_grid, ssrd_province[1], cmap='viridis')  # 使用 contourf 绘制等值图
-    plt.colorbar(contour)  # 添加颜色条  
-    plt.show()  # 添加这行来显示图形
+    参数:
+        file_path (str): ERA5 数据文件路径（NetCDF 格式）
+        province_name (str): 目标省名称（如 '山东省'）
+        var_name (str): 目标变量名称（如 'ssr'）
+        
+    返回:
+        tuple: (var_area, lon_grid, lat_grid, time_array)
+            - var_area (ndarray): 目标区域的变量数据（矩阵）
+            - lon_grid (ndarray): 经度网格
+            - lat_grid (ndarray): 纬度网格
+            - time_array (array): 标准时间数组
+    """
+    # 定义各省份的经纬度范围
+    province_bounds = {
+        # 华北地区
+        "北京市": [115.7, 117.4, 39.4, 41.6],  # [经度最小值, 经度最大值, 纬度最小值, 纬度最大值]
+        "天津市": [116.7, 118.3, 38.6, 40.2],
+        "河北省": [113.5, 119.8, 36.0, 42.5],
+        "山西省": [110.2, 114.5, 34.6, 40.7],
+        "内蒙古自治区": [97.1, 126.0, 37.4, 53.4],
+        
+        # 东北地区
+        "辽宁省": [118.8, 125.8, 38.7, 43.5],
+        "吉林省": [121.6, 131.3, 40.8, 46.3],
+        "黑龙江省": [121.2, 135.1, 43.4, 53.3],
+        
+        # 华东地区
+        "上海市": [120.9, 122.1, 30.7, 31.9],
+        "江苏省": [116.3, 121.9, 30.8, 35.1],
+        "浙江省": [118.0, 123.0, 27.2, 31.5],
+        "安徽省": [114.9, 119.7, 29.4, 34.6],
+        "福建省": [115.5, 120.5, 23.6, 28.3],
+        "江西省": [113.6, 118.5, 24.5, 30.1],
+        "山东省": [114.8, 122.7, 34.4, 38.4],
+        
+        # 中南地区
+        "河南省": [110.2, 116.7, 31.4, 36.4],
+        "湖北省": [108.4, 116.1, 29.0, 33.3],
+        "湖南省": [108.8, 114.2, 24.6, 30.2],
+        "广东省": [109.7, 117.3, 20.2, 25.5],
+        "广西壮族自治区": [104.5, 112.0, 21.5, 26.4],
+        "海南省": [108.6, 111.0, 18.2, 20.2],
+        
+        # 西南地区
+        "重庆市": [105.5, 110.0, 28.2, 32.1],
+        "四川省": [97.4, 108.5, 26.0, 34.3],
+        "贵州省": [103.6, 109.6, 24.6, 29.2],
+        "云南省": [97.5, 106.2, 21.1, 29.3],
+        "西藏自治区": [78.4, 99.1, 26.8, 36.5],
+        
+        # 西北地区
+        "陕西省": [105.5, 111.2, 31.7, 39.6],
+        "甘肃省": [92.4, 108.7, 32.6, 42.8],
+        "青海省": [89.4, 103.0, 31.5, 39.2],
+        "宁夏回族自治区": [104.3, 107.7, 35.2, 39.2],
+        "新疆维吾尔自治区": [73.5, 96.4, 34.3, 49.5],
+        
+        # 港澳台地区
+        "香港特别行政区": [113.8, 114.5, 22.1, 22.6],
+        "澳门特别行政区": [113.5, 113.6, 22.1, 22.2],
+        "台湾省": [119.3, 124.5, 21.9, 25.3]
+    }
+    
+    # 检查省份是否存在
+    if province_name not in province_bounds:
+        raise ValueError(f"未找到省份 '{province_name}' 的经纬度范围数据")
+    
+    # 获取省份的经纬度范围
+    bounds = province_bounds[province_name]
+    lon_min, lon_max, lat_min, lat_max = bounds
+    
+    # 经纬度下界取整再减2，上界向上取整再加2
+    lon_min = int(lon_min) - 2
+    lat_min = int(lat_min) - 2
+    lon_max = int(lon_max + 0.99) + 2  # 向上取整再加2
+    lat_max = int(lat_max + 0.99) + 2  # 向上取整再加2
+    
+    # 调用 extract_area_var 函数提取数据
+    lat_range = [lat_min, lat_max]
+    lon_range = [lon_min, lon_max]
+    
+    # 调用 extract_area_var 函数
+    var_subset, lon_grid, lat_grid, time_array = extract_area_var(file_path, lat_range, lon_range, var_name)
+    
+    return var_subset, lon_grid, lat_grid, time_array
