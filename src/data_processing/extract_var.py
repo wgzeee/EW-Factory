@@ -4,6 +4,8 @@ import geopandas as gpd
 from shapely.geometry import Point, Polygon
 import matplotlib.path as mpath
 import datetime as dt
+import os
+import glob
 
 def extract_time_array(dataset):
     """
@@ -366,11 +368,11 @@ def extract_area_var_approximately(file_path, province_name, var_name):
     bounds = province_bounds[province_name]
     lon_min, lon_max, lat_min, lat_max = bounds
     
-    # 经纬度下界取整再减2，上界向上取整再加2
-    lon_min = int(lon_min) - 2
-    lat_min = int(lat_min) - 2
-    lon_max = int(lon_max + 0.99) + 2  # 向上取整再加2
-    lat_max = int(lat_max + 0.99) + 2  # 向上取整再加2
+    # 经纬度下界取整再减0.5，上界向上取整再加0.5
+    lon_min = int(lon_min) - 0.5
+    lat_min = int(lat_min) - 0.5
+    lon_max = int(lon_max + 0.99) + 0.5  # 向上取整再加0.5
+    lat_max = int(lat_max + 0.99) + 0.5  # 向上取整再加0.5
     
     # 调用 extract_area_var 函数提取数据
     lat_range = [lat_min, lat_max]
@@ -380,3 +382,129 @@ def extract_area_var_approximately(file_path, province_name, var_name):
     var_subset, lon_grid, lat_grid, time_array = extract_area_var(file_path, lat_range, lon_range, var_name)
     
     return var_subset, lon_grid, lat_grid, time_array
+
+
+def extract_annual_data(
+    data_dir, 
+    year, 
+    extract_method='approximate', 
+    province_name=None, 
+    shapefile_path=None, 
+    var_name='ssrd', 
+    lat_range=None, 
+    lon_range=None
+):
+    """
+    批量提取一年的气象数据并合并
+    
+    参数:
+        data_dir (str): 气象数据文件所在目录
+        year (int): 要提取的年份
+        extract_method (str): 提取方法，可选值：
+            - 'province': 提取指定省份数据，需要提供province_name和shapefile_path
+            - 'area': 提取指定经纬度范围数据，需要提供lat_range和lon_range
+            - 'china': 提取全国范围数据，需要提供shapefile_path
+            - 'approximate': 根据省份名称近似提取数据，需要提供province_name
+        province_name (str, optional): 省份名称，如'山东省'
+        shapefile_path (str, optional): 省界或国界Shapefile文件路径
+        var_name (str): 要提取的变量名称，默认为'ssrd'（向下短波辐射）
+        lat_range (list, optional): 纬度范围[lat_min, lat_max]
+        lon_range (list, optional): 经度范围[lon_min, lon_max]
+        
+    返回:
+        tuple: (annual_data, lon_grid, lat_grid, time_array)
+            - annual_data (ndarray): 全年的变量数据
+            - lon_grid (ndarray): 经度网格
+            - lat_grid (ndarray): 纬度网格
+            - time_array (array): 标准时间数组
+    """
+    # 检查参数有效性
+    if extract_method == 'province' and (province_name is None or shapefile_path is None):
+        raise ValueError("使用'province'方法时必须提供province_name和shapefile_path")
+    elif extract_method == 'area' and (lat_range is None or lon_range is None):
+        raise ValueError("使用'area'方法时必须提供lat_range和lon_range")
+    elif extract_method == 'china' and shapefile_path is None:
+        raise ValueError("使用'china'方法时必须提供shapefile_path")
+    elif extract_method == 'approximate' and province_name is None:
+        raise ValueError("使用'approximate'方法时必须提供province_name")
+    
+    # 构建文件匹配模式 - 修改为更通用的模式
+    # 先获取目录下所有nc文件，然后筛选出包含目标年份的文件
+    all_nc_files = glob.glob(os.path.join(data_dir, "*.nc"))
+    file_paths = []
+    
+    # 筛选出包含目标年份的文件
+    year_str = f"_{year}_"  # 例如 "_2019_"
+    for file_path in all_nc_files:
+        file_name = os.path.basename(file_path)
+        if year_str in file_name:
+            file_paths.append(file_path)
+    
+    # 按文件名排序，确保按月份顺序处理
+    file_paths = sorted(file_paths)
+    
+    if not file_paths:
+        raise FileNotFoundError(f"未找到{year}年的气象数据文件")
+    
+    print(f"找到{len(file_paths)}个{year}年的数据文件")
+    
+    # 存储每个月的数据
+    monthly_data = []
+    lon_grid = None
+    lat_grid = None
+    time_arrays = []
+    
+    # 处理每个月的数据
+    for file_path in file_paths:
+        print(f"处理文件: {os.path.basename(file_path)}")
+        
+        try:
+            # 根据选择的方法提取数据
+            if extract_method == 'province':
+                var_data, current_lon_grid, current_lat_grid, time_array = extract_province_var(
+                    file_path, shapefile_path, province_name, var_name
+                )
+            elif extract_method == 'area':
+                var_data, current_lon_grid, current_lat_grid, time_array = extract_area_var(
+                    file_path, lat_range, lon_range, var_name
+                )
+            elif extract_method == 'china':
+                var_data, current_lon_grid, current_lat_grid, time_array = extract_china_var(
+                    file_path, shapefile_path, var_name
+                )
+            elif extract_method == 'approximate':
+                var_data, current_lon_grid, current_lat_grid, time_array = extract_area_var_approximately(
+                    file_path, province_name, var_name
+                )
+            else:
+                raise ValueError(f"不支持的提取方法: {extract_method}")
+            
+            # 保存第一个月的网格信息，用于验证后续月份的一致性
+            if lon_grid is None:
+                lon_grid = current_lon_grid
+                lat_grid = current_lat_grid
+            else:
+                # 验证网格一致性
+                if not (np.array_equal(lon_grid, current_lon_grid) and np.array_equal(lat_grid, current_lat_grid)):
+                    raise ValueError("不同月份的经纬度网格不一致")
+            
+            # 添加当前月的数据和时间
+            monthly_data.append(var_data)
+            time_arrays.append(time_array)
+            
+        except Exception as e:
+            print(f"处理文件 {os.path.basename(file_path)} 时出错: {str(e)}")
+            # 继续处理下一个文件
+    
+    if not monthly_data:
+        raise ValueError("没有成功提取任何数据")
+    
+    # 合并所有月份的数据
+    annual_data = np.concatenate(monthly_data, axis=0)
+    
+    # 合并时间数组
+    all_times = np.concatenate(time_arrays)
+    
+    print(f"成功合并{len(monthly_data)}个月的数据，总时间步数: {annual_data.shape[0]}")
+    
+    return annual_data, lon_grid, lat_grid, all_times

@@ -74,3 +74,65 @@ def f_solar_power_2(G, Pn=1, rn=1000):
     power[mask_high] = Pn
     
     return power
+
+
+def f_solar_power_with_temp(G, T, Pn=1, R_stc=1000, T_stc=25, k=-0.005):
+    """
+    计算考虑温度修正的光伏发电功率
+    
+    参数:
+        G (float or ndarray): 光照强度 (W/m²)，可以是标量、向量或矩阵
+        T (float or ndarray): 环境温度 (°C)，可以是标量、向量或矩阵
+        Pn (float): 额定功率 (W)，默认为1W（表示单位1）
+        R_stc (float): 标准测试条件下的辐照强度 (W/m²)，默认为1000W/m²
+        T_stc (float): 标准测试条件下的温度 (°C)，默认为25°C
+        k (float): 温度系数 (/°C)，默认为-0.004/°C
+        
+    返回:
+        ndarray: 光伏发电功率 (W)，与 G 和 T 的维度相同
+    
+    公式:
+        P = Pn * (G/R_stc) * [1 + k(T_c - T_stc)]
+        T_c = T + 30*G/R_stc
+        
+    其中:
+        P: 光伏发电功率
+        Pn: 额定功率
+        G: 实际辐照强度
+        R_stc: 标准测试条件下的辐照强度
+        k: 温度系数
+        T_c: 电池温度
+        T: 环境温度
+        T_stc: 标准测试条件下的温度
+    """
+    # 检查G和T的维度是否一致
+    if G.shape != T.shape:
+        raise ValueError('光照强度G和温度T的维度必须一致')
+    
+    # 将光照强度从J/m-2转换为w/m-2，并转换为numpy数组以支持向量化运算
+    G = np.array(G / 3600)
+    # 将温度从K转换为°C
+    T = np.array(T) - 273.15
+    
+    # 初始化功率输出数组
+    power = np.zeros_like(G, dtype=float)
+    
+    # 处理NaN值
+    nan_mask = np.isnan(G) | np.isnan(T)
+    
+    # 计算电池温度
+    T_cell = T + 30 * G / R_stc
+    
+    # 计算温度修正系数
+    temp_correction = 1 + k * (T_cell - T_stc)
+    
+    # 计算光伏发电功率
+    power = Pn * (G / R_stc) * temp_correction
+    
+    # 负值修正（温度过高或辐照过低时可能出现）
+    power[power < 0] = 0
+    
+    # 处理NaN值
+    power[nan_mask] = np.nan
+    
+    return power

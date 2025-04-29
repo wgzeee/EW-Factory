@@ -118,6 +118,7 @@ def find_nearest_grid_points_method1(lon_grid, lat_grid, longitude, latitude):
     # 转换为列表形式，与其他方法保持一致的返回格式
     return [(nearest_indices[0][i], nearest_indices[1][i]) for i in range(len(longitude))]
 
+
 def find_nearest_grid_points_method2(lon_grid, lat_grid, longitude, latitude):
     """
     方法2：假设网格均匀分布，直接计算最近网格索引
@@ -153,6 +154,7 @@ def find_nearest_grid_points_method2(lon_grid, lat_grid, longitude, latitude):
     # 转换为列表形式，与其他方法保持一致的返回格式
     return [(i[k], j[k]) for k in range(len(longitude))]
 
+
 def find_nearest_grid_points_method3(lon_grid, lat_grid, longitude, latitude):
     """
     方法3：循环计算每个电厂到所有网格点的距离
@@ -172,40 +174,33 @@ def find_nearest_grid_points_method3(lon_grid, lat_grid, longitude, latitude):
         dist = np.sqrt((lon_grid - longitude[i])**2 + (lat_grid - latitude[i])**2)
         nearest_idx = np.unravel_index(np.argmin(dist), dist.shape)
         nearest_indices.append(nearest_idx)
-    
+
     return nearest_indices
 
-def calculate_province_power_output(var_data, lon_grid, lat_grid, csv_file_path, province_name, power_type='solar', method=1):
+
+def extract_station_data(var_data, lon_grid, lat_grid, longitude, latitude, method=1):
     """
-    计算指定省份所有电力场站的聚合出力
+    提取电力场站位置的气象数据
     
     参数:
-        var_data (ndarray): 形状为(时间, 纬度, 经度)的气象数据（光伏为辐射数据，风电为风速数据）
+        var_data (ndarray): 形状为(时间, 纬度, 经度)的气象数据
         lon_grid (ndarray): 经度网格
         lat_grid (ndarray): 纬度网格
-        csv_file_path (str): CSV文件路径，包含电厂信息
-        province_name (str): 省份名称
-        power_type (str): 发电类型，'solar'表示光伏，'wind'表示风电
+        longitude (ndarray): 电厂经度数组
+        latitude (ndarray): 电厂纬度数组
         method (int): 计算最近网格点的方法，1=向量化计算，2=均匀网格直接计算，3=循环计算
         
     返回:
-        tuple: (total_power_output, power_by_plant)
-            - total_power_output (ndarray): 形状为(时间)的省级聚合出力数据，单位为MW
-            - power_by_plant (ndarray): 形状为(时间, 电厂数量)的各电厂出力数据，单位为MW
+        tuple: (station_data, valid_nearest_indices)
+            - station_data (ndarray): 形状为(时间, 电厂数量)的各电厂气象数据
+            - valid_nearest_indices (list): 每个电厂对应的有效网格点索引
     """
-    # 提取省份电厂容量和位置信息
-    capacity, longitude, latitude = extract_geo_data(csv_file_path, province_name)
-    
-    if capacity is None or len(capacity) == 0:
-        print(f"错误: 无法获取 {province_name} 的电厂数据")
-        return None, None
-    
     # 获取时间步长和电厂数量
     time_steps = var_data.shape[0]
-    plant_count = len(capacity)
+    plant_count = len(longitude)
     
-    # 初始化电厂出力数组
-    power_by_plant = np.zeros((time_steps, plant_count))
+    # 初始化电厂气象数据数组
+    station_data = np.zeros((time_steps, plant_count))
     
     # 根据选择的方法计算最近网格点
     if method == 1:
@@ -247,32 +242,82 @@ def calculate_province_power_output(var_data, lon_grid, lat_grid, csv_file_path,
         else:
             valid_nearest_indices.append(nearest_idx)
     
-    # 向量化处理所有时间步的数据
+    # 提取每个电厂在所有时间步的气象数据
     for i in range(plant_count):
-        # 提取该电厂在所有时间步的气象数据
         valid_idx = valid_nearest_indices[i]
-        plant_var_series = var_data[:, valid_idx[0], valid_idx[1]]
+        station_data[:, i] = var_data[:, valid_idx[0], valid_idx[1]]
+    
+    return station_data, valid_nearest_indices
+
+def calculate_province_power_output(var_data, lon_grid, lat_grid, csv_file_path, 
+                                    province_name, T=None, power_type='solar', method=1):
+    """
+    计算指定省份所有电力场站的聚合出力
+    
+    参数:
+        var_data (ndarray): 形状为(时间, 纬度, 经度)的气象数据（光伏为辐射数据，风电为风速数据）
+        lon_grid (ndarray): 经度网格
+        lat_grid (ndarray): 纬度网格
+        csv_file_path (str): CSV文件路径，包含电厂信息
+        province_name (str): 省份名称
+        T (ndarray, optional): 形状为(时间, 纬度, 经度)的温度数据，默认为None
+        power_type (str): 发电类型，'solar'表示光伏，'wind'表示风电
+        method (int): 计算最近网格点的方法，1=向量化计算，2=均匀网格直接计算，3=循环计算
         
+    返回:
+        tuple: (total_power_output, power_by_plant)
+            - total_power_output (ndarray): 形状为(时间)的省级聚合出力数据，单位为MW
+            - power_by_plant (ndarray): 形状为(时间, 电厂数量)的各电厂出力数据，单位为MW
+    """
+    # 提取省份电厂容量和位置信息
+    capacity, longitude, latitude = extract_geo_data(csv_file_path, province_name)
+    
+    if capacity is None or len(capacity) == 0:
+        print(f"错误: 无法获取 {province_name} 的电厂数据")
+        return None, None
+    
+    # 获取时间步长和电厂数量
+    time_steps = var_data.shape[0]
+    plant_count = len(capacity)
+    
+    # 初始化电厂出力数组
+    power_by_plant = np.zeros((time_steps, plant_count))
+    
+    # 提取各电厂位置的气象数据
+    plant_var_data, valid_nearest_indices = extract_station_data(var_data, lon_grid, lat_grid, longitude, latitude, method)
+    
+    # 如果提供了温度数据，也提取各电厂位置的温度数据
+    plant_temp_data = None
+    if T is not None:
+        plant_temp_data, _ = extract_station_data(T, lon_grid, lat_grid, longitude, latitude, method)
+    
+    # 计算每个电厂的出力
+    for i in range(plant_count):
         try:
             # 根据发电类型计算容量系数
             if power_type.lower() == 'solar':
                 # 光伏发电 - 使用太阳辐射数据
-                capacity_factors = f_solar_power.f_solar_power_2(plant_var_series)
+                if plant_temp_data is None:
+                    capacity_factors = f_solar_power.f_solar_power_2(plant_var_data[:, i])
+                else:
+                    capacity_factors = f_solar_power.f_solar_power_with_temp(plant_var_data[:, i], plant_temp_data[:, i])
             elif power_type.lower() == 'wind':
                 # 风力发电 - 使用风速数据
-                capacity_factors = f_wind_power.f_wind_power(plant_var_series)
+                capacity_factors = f_wind_power.f_wind_power(plant_var_data[:, i])
             else:
                 raise ValueError(f"不支持的发电类型: {power_type}")
-            
+
             # 计算实际出力（MW）= 容量系数 * 装机容量
             power_by_plant[:, i] = capacity_factors * capacity[i]
         except Exception as e:
             print(f"警告: 计算电厂 {i+1} 的出力时出错: {str(e)}")
             power_by_plant[:, i] = 0
-    
-    # 计算省级聚合出力
-    total_power_output = np.sum(power_by_plant, axis=1)
-    
-    print(f"成功计算 {province_name} 的 {plant_count} 个{power_type}电厂的聚合出力")
-    return total_power_output
 
+    # 计算省级聚合出力
+    # 计算总装机容量
+    total_capacity = np.sum(capacity)
+    # 计算总出力并按总装机容量归一化
+    total_power_output = np.sum(power_by_plant, axis=1) / total_capacity
+
+    print(f"成功计算 {province_name} 的 {plant_count} 个{power_type}电厂的归一化聚合出力")
+    return total_power_output
